@@ -1,12 +1,15 @@
 import requests
 from bs4 import BeautifulSoup
 import urllib.robotparser as robotparser
+from urllib import parse
 import time
+
+headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
 
 
 def indexable(page, homepage):
     raw_home = homepage if homepage[len(homepage) - 1] != "/" else homepage[:-1]
-    r = requests.get(page, allow_redirects=False)
+    r = requests.get(page, allow_redirects=False, headers=headers)
     if r.status_code == 200:
         soup = BeautifulSoup(r.content, "lxml")
         canonicalEl = soup.find("link", {"rel": "canonical"}) if soup.find("link", {"rel": "canonical"}) is not None else ""
@@ -28,14 +31,20 @@ def indexable(page, homepage):
 
 
 def check_hreflang(page, homepage, soup):
-    is_page_ok = 0
-    checked = []
-    source_hreflang_links = list(map(lambda w: w["href"], soup.find_all("link", {"rel": "alternate"})))
-    if len(source_hreflang_links) == 0:
-        print(page + " has no hreflang links")
-        is_page_ok = is_page_ok + 1
     try:
-        source_hreflang_targets = list(map(lambda z: z["hreflang"], soup.find_all("link", {"rel": "alternate"})))
+        is_page_ok = 0
+        checked = []
+        source_hreflang_links = []
+        source_hreflang_targets = []
+        for tag in soup.find_all("link", {"rel": "alternate"}):
+            try:
+                source_hreflang_targets.append(tag["hreflang"])
+                source_hreflang_links.append(tag["href"])
+            except:
+                pass
+        if len(source_hreflang_links) == 0:
+            print(page + " has no hreflang links")
+            is_page_ok = is_page_ok + 1
         if page not in source_hreflang_links:
             print(page + " is missing self referring tag")
             is_page_ok = is_page_ok + 1
@@ -60,8 +69,7 @@ def check_hreflang(page, homepage, soup):
             print(page + " is OK")
         return checked
     except:
-        print(page + " has link rel tag but is using it for none-hreflang stuff")
-        return checked
+        print("error error")
 
 
 
@@ -103,15 +111,15 @@ def check_sitemap(homepage):
     return True
 
 
-def start_crawl(homepage):
+def start_crawl(homepage, start_page):
     if check_sitemap(homepage):
-        x = indexable(homepage, homepage)
+        x = indexable(start_page, homepage)
         if x[0]:
             to_crawl = []
             raw_home = homepage if homepage[len(homepage) - 1] != "/" else homepage[:-1]
             r = x[1]
             soup = BeautifulSoup(r.content, "lxml")
-            check_hreflang(homepage, homepage, soup)
+            check_hreflang(start_page, homepage, soup)
             for link in soup.find_all("a"):
                 try:
                     link = raw_home + link["href"] if link["href"] == "" or link["href"][:1] == "/" else link["href"]
@@ -127,5 +135,6 @@ def start_crawl(homepage):
             print("your home page is not indexable why... just why???")
 
 
-input = input("gis ur domayne: ")
-start_crawl(input.strip(" "))
+input = input("gis ur domayne and a starting page on the next line e.g. 'https://www.example.com,https://www.example.com/start-page': ")
+lines = input.split(",")
+start_crawl(lines[0].strip(), lines[1].strip())
