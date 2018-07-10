@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 import urllib.robotparser as robotparser
-from urllib import parse
 import time
 
 headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/39.0.2171.95 Safari/537.36'}
@@ -58,10 +57,9 @@ def check_hreflang(page, homepage, soup):
                 if source_link not in source_hreflang_links:
                     print(source_link + " with target " + source_target + " is missing self referring tag")
                     is_page_ok = is_page_ok + 1
-                else:
-                    if page not in current_hreflang_links:
-                        print(source_link + " is not pointing back to " + page)
-                        is_page_ok = is_page_ok + 1
+                if page not in current_hreflang_links:
+                    print(source_link + " is not pointing back to " + page)
+                    is_page_ok = is_page_ok + 1
             else:
                 print(page + " has a tag that points to " + source_link + " which is not indexable")
                 is_page_ok = is_page_ok + 1
@@ -107,7 +105,28 @@ def rec_crawl(cur, to_crawl, homepage, crawled):
 
 
 def check_sitemap(homepage):
-    # is there a sitemap with hreflang if yes return false else return true.
+    # raw_home = homepage if homepage[len(homepage) - 1] != "/" else homepage[:-1]
+    # r = requests.get(raw_home + "/robots.txt")
+    # lines = r.content.split(b"\n")
+    # sitemaps = []
+    # for line in lines:
+    #     if "Sitemap:" in line.decode("utf-8"):
+    #          sitemaps.append(line.decode("utf-8").split(" ")[1])
+    # for sitemap in sitemaps:
+    #     r = requests.get(sitemap)
+    #     soup = BeautifulSoup(r.content, 'lxml')
+    #     sub_maps = soup.find_all("sitemap")
+    #     if len(sub_maps) == 0:
+    #          for url in soup.find_all("url"):
+    #              print(url.text)
+    #     else:
+    #         for sub_map in sub_maps:
+    #             y = requests.get(sub_map.loc.text)
+    #             soup = BeautifulSoup(y.content, "lxml")
+    #             for url in soup.find_all("url"):
+    #                 print(url.text)
+
+
     return True
 
 
@@ -135,6 +154,6 @@ def start_crawl(homepage, start_page):
             print("your home page is not indexable why... just why???")
 
 
-input = input("gis ur domayne and a starting page on the next line e.g. 'https://www.example.com,https://www.example.com/start-page': ")
-lines = input.split(",")
-start_crawl(lines[0].strip(), lines[1].strip())
+start_crawl("https://www.cloudflare.com/", "https://www.cloudflare.com/")
+
+# check_sitemap("https://www.google.com")
