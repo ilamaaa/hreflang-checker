@@ -5,6 +5,7 @@ import urllib.parse
 import time
 import re
 import validators
+import gzip
 
 
 class page_check:
@@ -95,7 +96,7 @@ class page_check:
         links = []
         for link in self.soup.find_all("a"):
             try:
-                checked_link = self.validate_link(link["href"])
+                checked_link = self.validate_link(link["href"].strip())
                 if checked_link[0] and checked_link[1] not in links:
                     links.append(checked_link[1])
                 else:
@@ -216,7 +217,7 @@ class page_check:
             self.check_alts_indexable(alt_instances)
             self.check_targeting(alt_instances)
 
-
+# the crawler class, initiating just sets the start page, and sorts the starter things out
 class crawler:
     def __init__(self, page):
         self.current_page = page
@@ -225,6 +226,7 @@ class crawler:
         self.to_crawl = [page]
         self.crawled = []
 
+    #  the recursive crawler, it calls the hreflang check module, so if you want a free crawl validation, this is what you need
     def rec_crawl(self):
         print(str(len(self.to_crawl)) + " pages in que and " + str(len(self.crawled)) + " done, now on: " + self.current_page)
         self.crawled.append(self.current_page)
@@ -253,39 +255,206 @@ class crawler:
         else:
             print("badly formed link " + self.current_page)
 
+            if len(self.to_crawl) == 0:
+                print("All Done")
+            else:
+                self.crawled.append(self.current_page)
+                self.to_crawl = list(set(self.to_crawl) - set(self.crawled))
+                self.current_page = self.to_crawl[0]
+                self.rec_crawl()
 
-x = crawler("https://www.balsamhill.co.uk")
-rp = robotparser.RobotFileParser()
-rp.set_url(x.home_page + "robots.txt")
-rp.read()
-x.rec_crawl()
+# my attempt at hreflang is sitemap validation, this got much more complicated than anticipated
+# init just takes a url, gets the robots and from there the sitemap location
+class sitemap:
+    def __init__(self, page):
+        self.current_page = page
+        self.parsed_uri = urllib.parse.urlparse(page)
+        self.home_page = '{uri.scheme}://{uri.netloc}/'.format(uri=self.parsed_uri)
+        self.roboter = self.home_page + "robots.txt"
+
+    # get the sitemaps, this will only return what is pointed to in robots, if they are sitemap indexes then that is what is returned
+    def check_robots_for_sitemap(self):
+        sitemaps = []
+        r = requests.get(self.roboter)
+        lines = r.content.split(b"\n")
+        for line in lines:
+            if "Sitemap:" in line.decode("utf-8"):
+                sitemaps.append(line.decode("utf-8").split(" ")[1].replace("\r", ""))
+        if len(sitemaps) == 0:
+            print("no sitemaps in the robots file")
+            return False
+        else:
+            return sitemaps
+
+    # this checks if the robots sitemaps are sitemap indexes and if so, parses them to get the actual sitemaps
+    # it only checks on one level, so if you a sitemap index of sitemap indexes this gets wonky
+    def get_sitemaps(self):
+        sitemaps_now = self.check_robots_for_sitemap()
+        sitemaps = []
+        if sitemaps is not False:
+            for sitemap in sitemaps_now:
+                r = requests.get(sitemap)
+                soup = BeautifulSoup(r.content, "lxml")
+                if soup.find("sitemapindex"):
+                    for loc in soup.find_all("loc"):
+                        sitemaps.append(loc.text)
+                else:
+                    sitemaps.append(sitemap)
+            return sitemaps
+        else:
+            print("no sitemaps in the robots file")
+            return False
+
+    # does the heavy lifting, grabs all sitemaps, parses them into a workable dictionary
+    def get_data(self):
+        sitemaps = self.get_sitemaps()
+        if sitemaps is not False:
+            data = {"urls":[]}
+            for sitemap in sitemaps:
+                print("downloading sitemap :" + sitemap)
+                r = requests.get(sitemap)
+                if "Content-Type" in r.headers and "gz" in r.headers["Content-Type"]:
+                    content = gzip.decompress(r.content)
+                    soup = BeautifulSoup(content, "lxml")
+                    for url in soup.find_all("url"):
+                        deet = {"url": url.find("loc").text, "alts": []}
+                        for alt in url.find_all(attrs={"rel": "alternate"}):
+                            alter = {"target": alt["hreflang"], "link": alt["href"]}
+                            deet["alts"].append(alter)
+                        data["urls"].append(deet)
+                else:
+                    soup = BeautifulSoup(r.content, "lxml")
+                    for url in soup.find_all("url"):
+                        deet = {"url": url.find("loc").text, "alts": []}
+                        for alt in url.find_all(attrs={"rel": "alternate"}):
+                            alter = {"target": alt["hreflang"], "link": alt["href"]}
+                            deet["alts"].append(alter)
+                        data["urls"].append(deet)
+            return data
+        else:
+            print("no sitemaps in the robots file")
+            return False
+
+    # checks all sitemap urls with hreflang for a self reference
+    def check_self_ref(self, url_element):
+        url = url_element["url"]
+        alts = url_element["alts"]
+        links = list(map(lambda x: x["link"], alts))
+        if url in links:
+            print(url + " has self reference")
+        else:
+            print(url + " is missing self reference")
+            return False
+
+    #  checks that links pointed to in hreflang are also in the sitemap
+    def check_link_in_map(self, url_element, data):
+        alts = url_element["alts"]
+        links = list(map(lambda x: x["link"], alts))
+        check = []
+        urls = list(map(lambda x: x["url"], data["urls"]))
+        for link in links:
+            if link in urls:
+                print(link + " is in and has a corresponding url element")
+            else:
+                print(link + " is is pointed to but has to corresponding url element")
+                check.append(link)
+        if len(check) == 0:
+            return True
+        else:
+            return check
+
+    # checks if alternates exist and have alternates pointing back to the origin
+    def check_return(self, url_element, data):
+        url = url_element["url"]
+        links = list(map(lambda x: x["link"], url_element["alts"]))
+        urls = list(map(lambda x: x["url"], data["urls"]))
+        check = []
+        for link in links:
+            if link in urls:
+                index = urls.index(link)
+                other_element = data["urls"][index]
+                other_links = list(map(lambda x: x["link"], other_element["alts"]))
+                if url in other_links:
+                    print(url + " points to " + link + " and has link pointing back to it")
+                else:
+                    print(url + " points to " + link + " but not return")
+                    check.append(link)
+            else:
+                pass
+        if len(check) == 0:
+            return True
+        else:
+            return check
+
+    # checks if alternates exist, then if they do ensures that the origins targeting is
+    # the same as the targeting applied by the alternate
+    def check_target(self, url_element, data):
+        url = url_element["url"]
+        links = list(map(lambda x: x["link"], url_element["alts"]))
+        targets = list(map(lambda x: x["target"], url_element["alts"]))
+        check = []
+        for iter, link in enumerate(links):
+            target = targets[iter]
+            urls = list(map(lambda x: x["url"], data["urls"]))
+            if link in urls:
+                index = urls.index(link)
+                other_element = data["urls"][index]
+                other_links = list(map(lambda x: x["link"], other_element["alts"]))
+                if url in other_links:
+                    other_index = other_links.index(link)
+                    other_targets = list(map(lambda x: x["target"], other_element["alts"]))
+                    other_target = other_targets[other_index]
+                    if target == other_target:
+                        print(url + "url with target " + target + " is pointed to with target " + other_target)
+                    else:
+                        print(url + "url with target " + target + " is pointed to with target " + other_target)
+                        check.append(target)
+                else:
+                    pass
+            else:
+                pass
+        if len(check) == 0:
+            return True
+        else:
+            return check
+
+    # loops through each url in sitemap applying checks to each, updates dict with "checks" which have data on errors
+    def check_data(self):
+        data = self.get_data()
+        data["checks"] = []
+        for url_element in data["urls"]:
+            checks = []
+            checks.append({"self ref": self.check_self_ref(url_element)})
+            checks.append({"points to link in map": self.check_link_in_map(url_element, data)})
+            checks.append({"has return": self.check_return(url_element, data)})
+            checks.append({"same target": self.check_target(url_element, data)})
+            data["checks"].append(checks)
+        return data
 
 
 
 
 
 
-# def check_sitemap(homepage):
-#     # raw_home = homepage if homepage[len(homepage) - 1] != "/" else homepage[:-1]
-#     # r = requests.get(raw_home + "/robots.txt")
-#     # lines = r.content.split(b"\n")
-#     # sitemaps = []
-#     # for line in lines:
-#     #     if "Sitemap:" in line.decode("utf-8"):
-#     #          sitemaps.append(line.decode("utf-8").split(" ")[1])
-#     # for sitemap in sitemaps:
-#     #     r = requests.get(sitemap)
-#     #     soup = BeautifulSoup(r.content, 'lxml')
-#     #     sub_maps = soup.find_all("sitemap")
-#     #     if len(sub_maps) == 0:
-#     #          for url in soup.find_all("url"):
-#     #              print(url.text)
-#     #     else:
-#     #         for sub_map in sub_maps:
-#     #             y = requests.get(sub_map.loc.text)
-#     #             soup = BeautifulSoup(y.content, "lxml")
-#     #             for url in soup.find_all("url"):
-#     #                 print(url.text)
-#
-#
-#     return True
+# just some example urls i was using to test as i coded, some of the bigger ones cause memory error for me
+# when checking the sitemap which is fairly understandable, dealing with pretty huge processing requirements
+
+next = "http://www.next.de/de"
+canon = "https://www.canon.co.uk/"
+balsam = "https://www.balsamhill.co.uk"
+google = "https://www.google.com"
+macidys = "https://www.mcdonalds.com/"
+asics = "https://www.asics.com/"
+nuanc = "https://www.nuance.com"
+
+
+# Just some example calls
+# x = crawler(balsam)
+# roboter = x.home_page + "robots.txt"
+# rp = robotparser.RobotFileParser()
+# rp.set_url(roboter)
+# rp.read()
+a = sitemap(asics)
+data = a.check_data()
+# x.rec_crawl()
+
