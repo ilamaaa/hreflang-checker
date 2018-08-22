@@ -18,15 +18,15 @@ works with the 3 classes.
 example usage of the crawler (checks on page hreflang):
 
 - innit the crawler
-a = a.crawler("https://www.example.com")
+`a = a.crawler("https://www.example.com")
 - get the homepage from there to get the robots link... ugly i know, but it works
-roboter = a.home_page + "robots.txt"
+`roboter = a.home_page + "robots.txt"
 - get robots parser going
-rp = robotparser.RobotFileParser()
-rp.set_url(roboter)
-rp.read()
+`rp = robotparser.RobotFileParser()
+`rp.set_url(roboter)
+`rp.read()
 - start the crawl
-a.rec_crawl()
+a`.rec_crawl()
 
 
 ^^This will start the free crawl running, doing the checks as it goes and loggin the results as it goes.
@@ -34,7 +34,7 @@ a.rec_crawl()
 example usage of the sitemap checker (checks sitemap hreflang):
 
 - innit the whole jobby
-a = sitemap("https://www.example.com")
+`a = sitemap("https://www.example.com")
 - this part does everything else from downloading all the sitemaps to running all the checks and storing them in a dictionary
-data = a.check_data()
+`data = a.check_data()
 
