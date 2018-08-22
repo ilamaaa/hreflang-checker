@@ -4,38 +4,37 @@ works purely on the live site.
 
 
 Packages to install:
-	just install all the imports at the top of the script**
-
+just install all the imports at the top of the script**
 runs on python 3.x
 
-Just added somre sitemap checking functionality, only checks the basic things I could think of for now:
-	self reference
-	points to url included in sitemap
-	has return tag
-	return tag has same code/targeting as the self reference
+Just added some sitemap checking functionality, have not acutally come accross much that does this so maybe useful for some people. It struggles with massive sites since i have not done any real optimisation, i think the biggest that worked for me was about 50k pages:
 
 works with the 3 classes.
-	page_check which accepts any url and can run some basic checks on that url, including loading the alternates pointed to and ensure they are also valid
-	crawler which also accepts any url form the site, whith this you can basically start it going and will follow links on the site checking them as it goes along
-		Both the above ^^ require you to rp (robot parser globally), used in the checks that pages are indexable
-	The sitemap class loads up all your sitemaps that are pointed to through robots, including sitemaps pointed through sitemap indexes, it then performs some checks on those (this one does not hit any of your live pages)
 
+1. page_check: takes a URL, checks that the URL has correct hreflang (also checks the alternates pointed to).
+2. crawler: takes a URL, starts a free crawler from there which will check all the pages it finds (also checks the alternates pointed to).
+3. sitemap: takes the homepage, downloads and parses all the sitemaps and runs the various checks on them as it goes.
 
-example usage:
+example usage of the crawler (checks on page hreflang):
 
-# innit the crawler
+- innit the crawler
 a = a.crawler("https://www.example.com")
-# get the homepage from there to get the robots link
+- get the homepage from there to get the robots link... ugly i know, but it works
 roboter = a.home_page + "robots.txt"
-# get robots parser going
+- get robots parser going
 rp = robotparser.RobotFileParser()
 rp.set_url(roboter)
 rp.read()
-# start the crawl
+- start the crawl
 a.rec_crawl()
 
 
-# this will start the free crawl running, doing the checks as it goes.
+^^This will start the free crawl running, doing the checks as it goes and loggin the results as it goes.
 
+example usage of the sitemap checker (checks sitemap hreflang):
 
-There is a compiled dist that can be used by people that don't want to code or install anything, this is limited to just the crawler which checks the live site onpage tags. and its pretty wonky, i fixed a lot of the issues in it when switching to a class based check which has much more functionality.
+- innit the whole jobby
+a = sitemap("https://www.example.com")
+- this part does everything else from downloading all the sitemaps to running all the checks and storing them in a dictionary
+data = a.check_data()
+
